@@ -88,8 +88,6 @@ function updateLoc() {
           accu[sourceKey] = sourceLine;
           return accu;
         }, {});
-
-        console.log('SOURCE_LOC_STRING_MAP', SOURCE_LOC_STRING_MAP);
         
         if (args.he_IL) {
           file = file.replace("he_IL", "iw_IL")
@@ -114,10 +112,11 @@ function updateLoc() {
 
           // writeTasks.push(streamComplete(writeStream))
 
-          targetData.split(/\r?\n/).forEach(function (targetLine) {
+          targetData.split(/\r?\n/).forEach((targetLine, lineNum) => {
             const idx = targetLine.indexOf("=");
             // preserve comment string
-            if (idx < 1) {
+            // FIXME: debug writing redundant blank line to output file
+            if (idx < 1 && lineNum !== 0) {
               writeStream.write(targetLine + "\n");
               return;
             }
