@@ -89,6 +89,7 @@ function updateLoc() {
           return accu;
         }, {});
         
+        // TODO: move this to error handling
         if (args.he_IL) {
           file = file.replace("he_IL", "iw_IL")
         }
@@ -110,19 +111,23 @@ function updateLoc() {
             flags: "w",
           });
 
-          // writeTasks.push(streamComplete(writeStream))
-
-          targetData.split(/\r?\n/).forEach((targetLine, lineNum) => {
-            const idx = targetLine.indexOf("=");
+          const targetLines = targetData.split(/\r?\n/)
+          console.log('array', targetLines);
+          targetLines.forEach((line, lineNum) => {
+            // remove extra blank lines
+            if ((line === '') && (lineNum+1 < targetLines.length) && targetLines[lineNum+1] === '') return
+            
+            const idx = line.indexOf("=");
+            
             // preserve comment string
-            // FIXME: debug writing redundant blank line to output file
-            if (idx < 1 && lineNum !== 0) {
-              writeStream.write(targetLine + "\n");
+            if (idx < 1) {
+              writeStream.write(line + "\n");
               return;
             }
-            const targetKey = targetLine.slice(0, idx);
+            
+            const targetKey = line.slice(0, idx);
             // remove unchanged string from SOURCE_LOC_STRING_MAP
-            if (SOURCE_LOC_STRING_MAP[targetKey] && SOURCE_LOC_STRING_MAP[targetKey] === targetLine) {
+            if (SOURCE_LOC_STRING_MAP[targetKey] && SOURCE_LOC_STRING_MAP[targetKey] === line) {
               delete SOURCE_LOC_STRING_MAP[targetKey];
             }
             if (SOURCE_LOC_STRING_MAP[targetKey]) {
@@ -131,8 +136,9 @@ function updateLoc() {
               writeStream.write(SOURCE_LOC_STRING_MAP[targetKey] + "\n");
               delete SOURCE_LOC_STRING_MAP[targetKey];
             } else {
+              // console.log('line', line);
               // preserve old string
-              writeStream.write(targetLine + "\n");
+              writeStream.write(line + "\n");
             }
           });
 
