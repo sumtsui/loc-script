@@ -22,7 +22,7 @@ if ((!sourceDir || !targetDir)) {
 }
 
 const OMIT_LIST = []
-const INCLUDE_LIST = ['cancelPolicy.policySetup.policyOptions.popover']
+const INCLUDE_LIST = []
 
 updateLoc();
 
