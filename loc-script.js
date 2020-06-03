@@ -3,7 +3,7 @@ const path = require('path')
 const fs = require("fs");
 const args = require("minimist")(process.argv.slice(2),{
 	boolean: ["help", "exc", "he_IL"],
-	string: ["source", "target", "--prefix-target"]
+	string: ["source", "target", "target-prefix"]
 });
 
 if (args.help) {
@@ -40,8 +40,8 @@ function printHelp() {
       --target={string}                   absolute path of target directory.
                                           you can also edit "targetDir" in the script instead.
       
-      --prefix-target={string}            if a loc file's name is "messages_zh_TW.properties", its prefix is "messages".
-                                          if a loc file's name is "feehub_zh_TW.properties", its prefix is "feehub".
+      --target-prefix={string}            the source file names and target file names need to be the same for this script to work. 
+                                          if a source file name is "messages_zh_TW.properties", but the target file name is "feehub_zh_TW.properties", use --target-prefix=feehub to tell the script about it.
                                           default is "messages".
 
       How to omit some keys?
@@ -82,7 +82,8 @@ function updateLoc() {
               return accu;
             }
           } else {
-            if (OMIT_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) return accu
+            // if (OMIT_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) return accu
+            if (OMIT_LIST.find(text => sourceKey.toLowerCase().includes(text.toLowerCase()))) return accu
           }
 
           accu[sourceKey] = sourceLine;
@@ -94,8 +95,8 @@ function updateLoc() {
           file = file.replace("he_IL", "iw_IL")
         }
 
-        if (args["--prefix-target"]) {
-          file = file.replace("messages", args["--prefix-target"])
+        if (args["target-prefix"]) {
+          file = file.replace("messages", args["target-prefix"])
         }
 
         fs.readFile(path.resolve(targetDir, file), "utf8", function (err, targetData) {
@@ -112,10 +113,11 @@ function updateLoc() {
           });
 
           const targetLines = targetData.split(/\r?\n/)
-          console.log('array', targetLines);
           targetLines.forEach((line, lineNum) => {
             // remove extra blank lines
             if ((line === '') && (lineNum+1 < targetLines.length) && targetLines[lineNum+1] === '') return
+
+            if (lineNum === targetLines.length - 1 && line === '') return
             
             const idx = line.indexOf("=");
             
