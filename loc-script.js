@@ -3,7 +3,7 @@ const path = require('path')
 const fs = require("fs");
 const args = require("minimist")(process.argv.slice(2),{
 	boolean: ["help", "exc", "he_IL"],
-	string: ["source", "target", "target-prefix"]
+	string: ["source", "target", "targetPrefix", "sourcePrefix"]
 });
 
 if (args.help) {
@@ -11,18 +11,23 @@ if (args.help) {
   process.exit()
 }
 
-const sourceDir = args.source || 
+const SOURCE_DIR = args.source || 
   "";
-const targetDir = args.target ||
+const TARGET_DIR = args.target ||
   "";
+const SOURCE_PREFIX = args.sourcePrefix || 'messages'
+const TARGET_PREFIX = args.targetPrefix || 'messages'
 
-if ((!sourceDir || !targetDir)) {
+
+if ((!SOURCE_DIR || !TARGET_DIR)) {
   error(new Error("source and target are required"), true)
   process.exit()
 }
 
 const OMIT_LIST = []
 const INCLUDE_LIST = []
+
+let fileCount = 0
 
 updateLoc();
 
@@ -35,14 +40,16 @@ function printHelp() {
       --he_IL                             use this flag when target is iw_IL but source is he_IL.
       
       --source={string}                   absolute path of source directory.
-                                          you can also edit "sourceDir" in the script instead.
+                                          you can also edit "SOURCE_DIR" in the script instead.
       
       --target={string}                   absolute path of target directory.
-                                          you can also edit "targetDir" in the script instead.
+                                          you can also edit "TARGET_DIR" in the script instead.
       
-      --target-prefix={string}            the source file names and target file names need to be the same for this script to work. 
-                                          if a source file name is "messages_zh_TW.properties", but the target file name is "feehub_zh_TW.properties", use --target-prefix=feehub to tell the script about it.
+      --targetPrefix={string}             the source file names and target file names need to be the same for this script to work. 
+                                          if a source file name is "messages_zh_TW.properties", but the target file name is "feehub_zh_TW.properties", use --targetPrefix=feehub to tell the script about it.
                                           default is "messages".
+
+      --sourcePrefix={string}             default is "messages".                        
 
       How to omit some keys?
         Add the keys to the OMIT_LIST array.
@@ -53,19 +60,20 @@ function printHelp() {
 }
 
 function updateLoc() {
-  // let fileCount = 0
-  fs.readdir(sourceDir, function (err, sourceFiles) {
+  fs.readdir(SOURCE_DIR, function (err, sourceFiles) {
     if (err) return console.error("Unable to scan directory: " + err);
 
     // const writeTasks = []
     sourceFiles.forEach(function (file) {
       if (file === ".DS_Store") return;
       if (file.includes("en_US")) return;
+
+      if (!file.includes(SOURCE_PREFIX)) return
       
-      const lang = file.replace("messages_", "").replace(".properties", "");
+      const lang = file.replace("messages_", "").replace(".properties", "").replace(SOURCE_PREFIX, "");
       
-      fs.readFile(path.resolve(sourceDir, file), "utf8", function (err, sourceData) {
-        if (err) return console.error("Unable to read file", path.resolve(sourceDir, file));
+      fs.readFile(path.resolve(SOURCE_DIR, file), "utf8", function (err, sourceData) {
+        if (err) return console.error("Unable to read file", path.resolve(SOURCE_DIR, file));
         
         const SOURCE_LOC_STRING_MAP = sourceData
         .split(/\r?\n/)
@@ -95,20 +103,18 @@ function updateLoc() {
           file = file.replace("he_IL", "iw_IL")
         }
 
-        if (args["target-prefix"]) {
-          file = file.replace("messages", args["target-prefix"])
-        }
+        file = file.replace(SOURCE_PREFIX, TARGET_PREFIX)
 
-        fs.readFile(path.resolve(targetDir, file), "utf8", function (err, targetData) {
+        fs.readFile(path.resolve(TARGET_DIR, file), "utf8", function (err, targetData) {
           if (err) {
-            console.error("Unable to read file", path.resolve(targetDir, file));
+            console.error("Unable to read file", path.resolve(TARGET_DIR, file));
             return;
           }
 
-          // fileCount++
+          fileCount++
 
           let updateCount = 0, addCount = 0;
-          const writeStream = fs.createWriteStream(path.resolve(targetDir, file), {
+          const writeStream = fs.createWriteStream(path.resolve(TARGET_DIR, file), {
             flags: "w",
           });
 
@@ -153,10 +159,10 @@ function updateLoc() {
           console.log("\n\n%i strings added for %s", addCount, lang);
           console.log("%i strings updated for %s", updateCount, lang);
           writeStream.end();
+          console.log('\n\n%i files processed in total\n\n', fileCount);
         });
       });
     });
-    // console.log('\n\n%i files processed in total\n\n', fileCount);
   });
 
 }
