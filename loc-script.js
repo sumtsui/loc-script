@@ -2,7 +2,7 @@
 const path = require('path')
 const fs = require("fs");
 const args = require("minimist")(process.argv.slice(2),{
-	boolean: ["help", "exc", "he_IL"],
+	boolean: ["help", "exc", "he_IL", "sourceIsJson", "targetIsJson"],
 	string: ["source", "target", "targetPrefix", "sourcePrefix"]
 });
 
@@ -17,6 +17,8 @@ const TARGET_DIR = args.target ||
   "";
 const SOURCE_PREFIX = args.sourcePrefix || 'messages'
 const TARGET_PREFIX = args.targetPrefix || 'messages'
+const SOURCE_IS_JSON = args.sourceIsJson
+const TARGET_IS_JSON = args.targetIsJson
 
 
 if ((!SOURCE_DIR || !TARGET_DIR)) {
@@ -25,7 +27,7 @@ if ((!SOURCE_DIR || !TARGET_DIR)) {
 }
 
 const OMIT_LIST = []
-const INCLUDE_LIST = []
+const INCLUDE_LIST = ['cancelPolicy.updateSuccessful', 'cancelPolicy.createSuccessful']
 
 let fileCount = 0
 
@@ -49,7 +51,11 @@ function printHelp() {
                                           if a source file name is "messages_zh_TW.properties", but the target file name is "feehub_zh_TW.properties", use --targetPrefix=feehub to tell the script about it.
                                           default is "messages".
 
-      --sourcePrefix={string}             default is "messages".                        
+      --sourcePrefix={string}             default is "messages".
+      
+      --sourceIsJson                      if source files are .json instead of .properties
+
+      --targetIsJson                      if target files are .json instead of .properties
 
       How to omit some keys?
         Add the keys to the OMIT_LIST array.
@@ -74,29 +80,32 @@ function updateLoc() {
       
       fs.readFile(path.resolve(SOURCE_DIR, file), "utf8", function (err, sourceData) {
         if (err) return console.error("Unable to read file", path.resolve(SOURCE_DIR, file));
+
+        // console.log('sourceData', sourceData);
         
         const SOURCE_LOC_STRING_MAP = sourceData
-        .split(/\r?\n/)
-        .reduce((accu, sourceLine) => {
-          const idx = sourceLine.indexOf("=");
-          if (idx < 1) return accu;
-          const sourceKey = sourceLine.slice(0, idx);
+          .split(/\r?\n/)
+          .reduce((accu, sourceLine) => {
+            const idx = sourceLine.indexOf("=");
+            if (idx < 1) return accu;
+            const sourceKey = sourceLine.slice(0, idx);
+            const sourceVal = sourceLine.slice(idx+1);
 
-          if (INCLUDE_LIST.length > 0) {
-            if (INCLUDE_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) {
-              accu[sourceKey] = sourceLine;
-              return accu;
+            if (INCLUDE_LIST.length > 0) {
+              if (INCLUDE_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) {
+                accu[sourceKey] = sourceVal;
+                return accu;
+              } else {
+                return accu;
+              }
             } else {
-              return accu;
+              // if (OMIT_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) return accu
+              if (OMIT_LIST.find(text => sourceKey.toLowerCase().includes(text.toLowerCase()))) return accu
             }
-          } else {
-            // if (OMIT_LIST.find(text => sourceKey.toLowerCase() === text.toLowerCase())) return accu
-            if (OMIT_LIST.find(text => sourceKey.toLowerCase().includes(text.toLowerCase()))) return accu
-          }
 
-          accu[sourceKey] = sourceLine;
-          return accu;
-        }, {});
+            accu[sourceKey] = sourceVal;
+            return accu;
+          }, {});
         
         // TODO: move this to error handling
         if (args.he_IL) {
@@ -105,61 +114,67 @@ function updateLoc() {
 
         file = file.replace(SOURCE_PREFIX, TARGET_PREFIX)
 
-        fs.readFile(path.resolve(TARGET_DIR, file), "utf8", function (err, targetData) {
+        const TARGET_FILE = TARGET_IS_JSON ? file.replace('.properties', '.json') : file
+
+        fs.readFile(path.resolve(TARGET_DIR, TARGET_FILE), "utf8", function (err, targetData) {
           if (err) {
-            console.error("Unable to read file", path.resolve(TARGET_DIR, file));
+            console.error("Unable to read file", path.resolve(TARGET_DIR, TARGET_FILE));
             return;
           }
 
           fileCount++
 
           let updateCount = 0, addCount = 0;
-          const writeStream = fs.createWriteStream(path.resolve(TARGET_DIR, file), {
-            flags: "w",
-          });
 
-          const targetLines = targetData.split(/\r?\n/)
-          targetLines.forEach((line, lineNum) => {
-            // remove extra blank lines
-            if ((line === '') && (lineNum+1 < targetLines.length) && targetLines[lineNum+1] === '') return
+          console.log(fileCount);
 
-            if (lineNum === targetLines.length - 1 && line === '') return
-            
-            const idx = line.indexOf("=");
-            
-            // preserve comment string
-            if (idx < 1) {
-              writeStream.write(line + "\n");
-              return;
-            }
-            
-            const targetKey = line.slice(0, idx);
-            // remove unchanged string from SOURCE_LOC_STRING_MAP
-            if (SOURCE_LOC_STRING_MAP[targetKey] && SOURCE_LOC_STRING_MAP[targetKey] === line) {
-              delete SOURCE_LOC_STRING_MAP[targetKey];
-            }
-            if (SOURCE_LOC_STRING_MAP[targetKey]) {
-              // update old string with new string
-              updateCount++;
-              writeStream.write(SOURCE_LOC_STRING_MAP[targetKey] + "\n");
-              delete SOURCE_LOC_STRING_MAP[targetKey];
-            } else {
-              // console.log('line', line);
-              // preserve old string
-              writeStream.write(line + "\n");
-            }
-          });
+          updateJSON(targetData, SOURCE_LOC_STRING_MAP, TARGET_DIR + '/' + TARGET_FILE)
+          // const writeStream = fs.createWriteStream(path.resolve(TARGET_DIR, TARGET_FILE), {
+          //   flags: "w",
+          // });
 
-          // add new strings that did not exist in old file
-          Object.keys(SOURCE_LOC_STRING_MAP).forEach((key) => {
-            addCount++
-            writeStream.write(SOURCE_LOC_STRING_MAP[key] + "\n");
-          });
+          // const targetLines = targetData.split(/\r?\n/)
+          // targetLines.forEach((line, lineNum) => {
+          //   // remove extra blank lines
+          //   if ((line === '') && (lineNum+1 < targetLines.length) && targetLines[lineNum+1] === '') return
+
+          //   if (lineNum === targetLines.length - 1 && line === '') return
+            
+          //   const idx = line.indexOf("=");
+            
+          //   // preserve comment string
+          //   if (idx < 1) {
+          //     writeStream.write(line + "\n");
+          //     return;
+          //   }
+            
+          //   const targetKey = line.slice(0, idx);
+          //   // remove unchanged string from SOURCE_LOC_STRING_MAP
+          //   if (SOURCE_LOC_STRING_MAP[targetKey] && SOURCE_LOC_STRING_MAP[targetKey] === line) {
+          //     delete SOURCE_LOC_STRING_MAP[targetKey];
+          //   }
+          //   if (SOURCE_LOC_STRING_MAP[targetKey]) {
+          //     // update old string with new string
+          //     updateCount++;
+          //     writeStream.write(SOURCE_LOC_STRING_MAP[targetKey] + "\n");
+          //     delete SOURCE_LOC_STRING_MAP[targetKey];
+          //   } else {
+          //     // console.log('line', line);
+          //     // preserve old string
+          //     writeStream.write(line + "\n");
+          //   }
+          // });
+
+          // // add new strings that did not exist in old file
+          // Object.keys(SOURCE_LOC_STRING_MAP).forEach((key) => {
+          //   addCount++
+          //   writeStream.write(SOURCE_LOC_STRING_MAP[key] + "\n");
+          // });
           
-          console.log("\n\n%i strings added for %s", addCount, lang);
-          console.log("%i strings updated for %s", updateCount, lang);
-          writeStream.end();
-          console.log('\n\n%i files processed in total\n\n', fileCount);
+          // console.log("\n\n%i strings added for %s", addCount, lang);
+          // console.log("%i strings updated for %s", updateCount, lang);
+          // writeStream.end();
+          // console.log('\n\n%i files processed in total\n\n', fileCount);
         });
       });
     });
@@ -182,4 +197,41 @@ function streamComplete(stream){
 	});
 }
 
+function updateJSON(targetContent, srcObject, targetPath) {
+  const targetObject = JSON.parse(targetContent)
 
+  const writeStream = fs.createWriteStream(path.resolve(targetPath), {
+    flags: "w",
+  });
+
+  Object.entries(targetObject).forEach(pair => {
+    // console.log(pair[0], pair[1]);
+    const key = pair[0]
+    const value = pair[1]
+
+    const srcValue = srcObject[key]
+    
+    if (!srcValue) return
+
+    // remove unchanged string from SOURCE_LOC_STRING_MAP
+    if (srcValue === value) {
+      delete srcObject[key];
+    }
+    // update old string with new string
+    if (srcValue !== value) {
+      targetObject[key] = srcValue
+      delete srcObject[key];
+    }
+  })
+
+  const updated = {
+    ...targetObject,
+    ...srcObject
+  }
+
+  writeStream.write(JSON.stringify(updated, null, 2));
+  
+  console.log("\n\n", targetPath, 'updated');
+
+  writeStream.end();
+}
